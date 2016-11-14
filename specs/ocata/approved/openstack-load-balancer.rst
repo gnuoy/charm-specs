@@ -89,13 +89,69 @@ I would like the ability to tell the loadbalancer to drain connection to a
 specific unit and take it out of service. This will allow the unit to go into
 maintenance mode.
 
+15) As a cloud architect I would like each instance of the OpenStack
+Loadbalancer to be in a different broadcast domain.
 
 Proposed Change
 ===============
 
-One new charm - OpenStack Loadbalancer with corresponding tests & QA CI/setup.
-One new interface - Both requires and provides ends of a new a interface for
-                    the backend services.
+1) One new interface - Both requires and provides ends of a new a interface for
+                       the backend services.
+
+The backend charm needs to inform the loadbalancer which ports the backend
+service is listening on and on which ports. It also needs to tell the
+loadbalancer which ports to listen on.
+
+.. code-block:: python
+
+    {'spaces': {
+        'internal': {
+            'backend-ip': IP-I, 
+            'backend-port': PortA, 
+            'frontend-port': PortB},
+        'admin': {
+            'backend-ip': IP-A, 
+            'backend-port': PortC, 
+            'frontend-port': PortD},
+        ...
+        'default': {
+            'backend-ip': IP-X, 
+            'backend-port': PortY, 
+            'frontend-port': PortZ}}}
+
+The loadbalancer charm now needs to check which IP or VIP (if using one)
+corresponds to each space name specified by the backend. It then updates the
+haproxy stanza to add IP-I:PortA as backend for internal traffic and adds
+VIP-I:PortB to listen for incoming internal traffic. It repeates this process
+for each 'space' specified by the backend service. The 'default' space name is
+used when network spaces are not in use.
+
+Having processed the request from the backend the loadbalancer now needs to
+tell the backend service the external IP being used to listen for connections
+for each space.
+
+.. code-block:: python
+
+    {'spaces': {
+        'internal': {
+            'frontend-ip': VIP-I,}
+
+The backend service now updates the endpoints in the Keystone registry to point
+at the IPs passed back by the loadbalancer.
+
+2) Refactor code for calculating which IP should be registered in Keystone.
+Currently the following competing options are used to calculate which EP should
+be registered in Keystone:
+
+* os-*-network set do resolve_address old method
+* dnsha use dnsha
+* os-*-hostname set use hostname
+* space
+* prefer ipv6
+* use-internal-endpoints
+    
+3) One new charm - OpenStack Loadbalancer with corresponding tests & QA
+                   CI/setup.
 
 Alternatives
 ------------
